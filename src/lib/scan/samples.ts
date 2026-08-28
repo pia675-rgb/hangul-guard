@@ -280,6 +280,7 @@ export async function buildSampleFiles(): Promise<File[]> {
       "Authentication flow (draft)",
       "Clients must send a Bearer token on every request.",
       "참고: 토큰 만료는 다음 주 미팅에서 확정합니다.",
+      "参考：来週の会議で確定します。",
       "Error catalog is still under review.",
     ],
     "API Spec v3",

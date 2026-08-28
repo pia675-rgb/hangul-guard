@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Hangul Guard";
+const APP_NAME = "English Guard";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -13,7 +13,7 @@ export const Route = createRootRoute({
       { title: APP_NAME },
       {
         name: "description",
-        content: "Find leftover Hangul in PDF, Word, Excel, and PowerPoint files before a US delivery.",
+        content: "Flag non-English text in PDF, Word, Excel, and PowerPoint files before a US delivery.",
       },
       { name: "theme-color", content: "#1c3d5a" },
     ],

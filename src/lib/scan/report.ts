@@ -13,9 +13,9 @@ export function toCsv(results: FileScanResult[]): string {
     "Severity",
     "Category",
     "Location",
-    "Hangul",
+    "Non-English",
     "Context",
-    "Hangul characters",
+    "Non-English characters",
   ];
   const rows: string[][] = [header];
   for (const file of results) {
@@ -48,18 +48,18 @@ export function toJson(results: FileScanResult[]): string {
   return JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
-      scanner: "Hangul Guard",
+      scanner: "English Guard",
       files: results.map((file) => ({
         fileName: file.fileName,
         status: file.status,
         type: file.ext,
-        hangulCharacters: file.hangulCount,
+        nonEnglishCharacters: file.hangulCount,
         error: file.error,
         findings: file.findings.map((f) => ({
           severity: f.severity,
           category: f.kind,
           location: f.location,
-          hangul: f.hangul,
+          nonEnglish: f.hangul,
           context: f.snippet,
         })),
       })),
@@ -74,16 +74,18 @@ export function englishSummary(results: FileScanResult[]): string {
   const clear = results.filter((r) => r.status === "clear");
   const errors = results.filter((r) => r.status === "error");
   const lines = [
-    `Hangul Guard scan — ${results.length} file(s)`,
-    `Flagged: ${flagged.length} · Clear: ${clear.length} · Errors: ${errors.length}`,
+    `English Guard scan — ${results.length} file(s)`,
+    `Flagged: ${flagged.length} · English-only: ${clear.length} · Errors: ${errors.length}`,
     "",
   ];
   if (flagged.length === 0 && errors.length === 0) {
-    lines.push("No Hangul found in scanned files.");
+    lines.push("No non-English text found in scanned files.");
     return lines.join("\n");
   }
   for (const file of flagged) {
-    lines.push(`${file.fileName} — ${file.findings.length} finding(s), ${file.hangulCount} Hangul character(s)`);
+    lines.push(
+      `${file.fileName} — ${file.findings.length} finding(s), ${file.hangulCount} non-English character(s)`,
+    );
     for (const f of file.findings.slice(0, 8)) {
       lines.push(`  [${f.severity}] ${f.location}: ${f.hangul}`);
     }

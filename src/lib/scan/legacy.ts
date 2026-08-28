@@ -4,15 +4,10 @@ import type { Finding } from "./types";
 import { MAX_FINDINGS_PER_FILE } from "./types";
 
 function isPrintableSnippet(cp: number): boolean {
-  return (
-    isHangulCodePoint(cp) ||
-    (cp >= 0x20 && cp <= 0x7e) ||
-    cp === 0x09 ||
-    cp === 0x0a ||
-    cp === 0x0d ||
-    (cp >= 0xa0 && cp <= 0x24f) ||
-    (cp >= 0x2010 && cp <= 0x2027)
-  );
+  if (cp === 0x09 || cp === 0x0a || cp === 0x0d) return true;
+  if (cp < 0x20) return false;
+  if (cp >= 0xd800 && cp <= 0xdfff) return false;
+  return true;
 }
 
 function pushRun(findings: Finding[], hangul: string, snippet: string, location: string) {
@@ -21,8 +16,8 @@ function pushRun(findings: Finding[], hangul: string, snippet: string, location:
 }
 
 /**
- * Best-effort scan of OLE .doc / .xls / .ppt. Requires two consecutive Hangul
- * syllables in UTF-16LE (or a UTF-8 Hangul run of 2+) to avoid binary noise.
+ * Best-effort scan of OLE .doc / .xls / .ppt. Requires two consecutive
+ * non-English letters in UTF-16LE (or a UTF-8 run of 2+) to avoid binary noise.
  */
 export function scanLegacyBinary(buffer: ArrayBuffer): Finding[] {
   const bytes = new Uint8Array(buffer);
@@ -61,7 +56,6 @@ export function scanLegacyBinary(buffer: ArrayBuffer): Finding[] {
   const utf8 = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   const before = findings.length;
   findingsFromText(utf8, "UTF-8 text (legacy Office)", "body", findings);
-  // Drop UTF-8 hits that are single-char noise from binary; keep runs already filtered by findHangulHits
   if (findings.length > before) {
     const kept = findings.slice(0, before);
     for (const f of findings.slice(before)) {

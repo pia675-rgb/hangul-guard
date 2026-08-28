@@ -1,13 +1,8 @@
 /**
- * Hangul-only detection. CJK ideographs (Hanja / Kanji / Hanzi) are intentionally
- * ignored — US-bound Chinese or Japanese copy should not trip this scanner.
+ * English-only check for US-bound files.
+ * Flags letters that are not Latin (Hangul, Han, kana, Cyrillic, Arabic, …).
+ * Accented Latin (café, naïve) and punctuation/symbols pass.
  */
-export const HANGUL_CHAR_RE =
-  /[\u1100-\u11FF\u3130-\u318F\u3200-\u321E\u3260-\u327F\uA960-\uA97F\uAC00-\uD7A3\uD7B0-\uD7FF\uFFA0-\uFFDC]/u;
-
-const HANGUL_RUN_RE =
-  /[\u1100-\u11FF\u3130-\u318F\u3200-\u321E\u3260-\u327F\uA960-\uA97F\uAC00-\uD7A3\uD7B0-\uD7FF\uFFA0-\uFFDC]+/gu;
-
 export type HangulHit = {
   index: number;
   length: number;
@@ -15,28 +10,31 @@ export type HangulHit = {
   snippet: string;
 };
 
+export function isNonEnglishChar(ch: string): boolean {
+  if (/\p{Script=Hangul}/u.test(ch)) return true;
+  if (/\p{Script=Han}/u.test(ch)) return true;
+  if (/\p{Script=Hiragana}/u.test(ch)) return true;
+  if (/\p{Script=Katakana}/u.test(ch)) return true;
+  if (!/\p{L}/u.test(ch)) return false;
+  return !/\p{Script=Latin}/u.test(ch) && !/\p{Script=Common}/u.test(ch);
+}
+
 export function isHangulCodePoint(cp: number): boolean {
-  return (
-    (cp >= 0x1100 && cp <= 0x11ff) ||
-    (cp >= 0x3130 && cp <= 0x318f) ||
-    (cp >= 0x3200 && cp <= 0x321e) ||
-    (cp >= 0x3260 && cp <= 0x327f) ||
-    (cp >= 0xa960 && cp <= 0xa97f) ||
-    (cp >= 0xac00 && cp <= 0xd7a3) ||
-    (cp >= 0xd7b0 && cp <= 0xd7ff) ||
-    (cp >= 0xffa0 && cp <= 0xffdc)
-  );
+  return isNonEnglishChar(String.fromCodePoint(cp));
 }
 
 export function hasHangul(text: string): boolean {
-  return HANGUL_CHAR_RE.test(text);
+  if (!text) return false;
+  for (const ch of text) {
+    if (isNonEnglishChar(ch)) return true;
+  }
+  return false;
 }
 
 export function countHangulChars(text: string): number {
   let n = 0;
   for (const ch of text) {
-    const cp = ch.codePointAt(0);
-    if (cp !== undefined && isHangulCodePoint(cp)) n += 1;
+    if (isNonEnglishChar(ch)) n += 1;
   }
   return n;
 }
@@ -44,34 +42,52 @@ export function countHangulChars(text: string): number {
 export function findHangulHits(text: string, context = 42, limit = 200): HangulHit[] {
   if (!text) return [];
   const hits: HangulHit[] = [];
-  const re = new RegExp(HANGUL_RUN_RE.source, "gu");
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const hangul = match[0];
-    const index = match.index;
-    const from = Math.max(0, index - context);
-    const to = Math.min(text.length, index + hangul.length + context);
+  let run = "";
+  let runStart = -1;
+  let i = 0;
+  const flush = () => {
+    if (!run || hits.length >= limit) {
+      run = "";
+      runStart = -1;
+      return;
+    }
+    const from = Math.max(0, runStart - context);
+    const to = Math.min(text.length, runStart + run.length + context);
     let snippet = text.slice(from, to).replace(/\s+/g, " ").trim();
     if (from > 0) snippet = `…${snippet}`;
     if (to < text.length) snippet = `${snippet}…`;
-    hits.push({ index, length: hangul.length, hangul, snippet });
-    if (hits.length >= limit) break;
+    hits.push({ index: runStart, length: run.length, hangul: run, snippet });
+    run = "";
+    runStart = -1;
+  };
+  for (const ch of text) {
+    if (isNonEnglishChar(ch)) {
+      if (runStart < 0) runStart = i;
+      run += ch;
+    } else {
+      flush();
+    }
+    i += ch.length;
   }
+  flush();
   return hits;
 }
 
 export function highlightHangul(snippet: string): { text: string; hangul: boolean }[] {
   const parts: { text: string; hangul: boolean }[] = [];
-  const re = new RegExp(HANGUL_RUN_RE.source, "gu");
-  let last = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(snippet)) !== null) {
-    if (match.index > last) {
-      parts.push({ text: snippet.slice(last, match.index), hangul: false });
-    }
-    parts.push({ text: match[0], hangul: true });
-    last = match.index + match[0].length;
+  let buf = "";
+  let flagged = false;
+  const push = () => {
+    if (!buf) return;
+    parts.push({ text: buf, hangul: flagged });
+    buf = "";
+  };
+  for (const ch of snippet) {
+    const next = isNonEnglishChar(ch);
+    if (buf && next !== flagged) push();
+    flagged = next;
+    buf += ch;
   }
-  if (last < snippet.length) parts.push({ text: snippet.slice(last), hangul: false });
+  push();
   return parts;
 }
