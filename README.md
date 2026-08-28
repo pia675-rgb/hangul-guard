@@ -14,7 +14,20 @@ Files are opened in the browser only. Nothing is uploaded to a server.
 
 **Limits:** image-only scanned PDFs are not OCR’d. Legacy `.doc` / `.xls` / `.ppt` get a best-effort binary pass.
 
-## Run locally
+## Local / intranet pack
+
+For an office network that cannot reach grok.me:
+
+```bash
+npm install
+npm run build:local
+```
+
+That writes `EnglishGuard-Local.zip`. Unzip on a Windows PC and double-click `EnglishGuard.bat`. No install, no internet. The server binds to this PC only.
+
+See `local-app/사용설명.txt`.
+
+## Run the web app locally (developers)
 
 Needs Node.js 22.
 
@@ -22,8 +35,6 @@ Needs Node.js 22.
 npm install
 npm run dev
 ```
-
-Then open the URL the command prints.
 
 ```bash
 npm run build

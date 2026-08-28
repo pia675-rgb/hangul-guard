@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, serif;
-  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, "Malgun Gothic", "Apple SD Gothic Neo", serif;
+  --font-sans: "IBM Plex Sans", "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --color-background: #f3f1ea;
