@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { hasHangul } from "@/lib/hangul";
 
 function xml(strings: TemplateStringsArray, ...values: unknown[]): string {
   return strings.reduce((out, chunk, i) => out + chunk + (i < values.length ? String(values[i] ?? "") : ""), "");
@@ -210,34 +211,67 @@ function pdfEscape(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
-function buildPdfFile(name: string, opts: { lines: string[]; title: string; annotation?: string }): File {
+function pdfTj(text: string): string {
+  if (hasHangul(text)) return `<${encodeUtf16BeHex(text)}> Tj`;
+  return `(${pdfEscape(text)}) Tj`;
+}
+
+function buildPdfFile(
+  name: string,
+  opts: {
+    title: string;
+    pages: Array<{ lines: string[]; annotation?: string }>;
+  },
+): File {
   const encoder = new TextEncoder();
   const header = "%PDF-1.4\n%\x80\x80\x80\x80\n";
-  const content =
-    "BT /F1 14 Tf 72 720 Td\n" +
-    opts.lines
-      .map((line, i) => (i === 0 ? `(${pdfEscape(line)}) Tj` : `0 -20 Td (${pdfEscape(line)}) Tj`))
-      .join("\n") +
-    "\nET";
+  const objects: string[] = new Array(1);
+  const catalogId = 1;
+  const pagesId = 2;
+  const fontId = 3;
+  const infoId = 4;
+  let nextId = 5;
 
-  const objects: string[] = [
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >>${opts.annotation ? " /Annots [7 0 R]" : ""} >>\nendobj\n`,
-    `4 0 obj\n<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream\nendobj\n`,
-    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-    `6 0 obj\n<< /Title <${encodeUtf16BeHex(opts.title)}> /Author <${encodeUtf16BeHex("Hangul Guard")}> >>\nendobj\n`,
-  ];
-  if (opts.annotation) {
-    objects.push(
-      `7 0 obj\n<< /Type /Annot /Subtype /Text /Rect [72 640 120 680] /Contents <${encodeUtf16BeHex(opts.annotation)}> /Name /Comment >>\nendobj\n`,
-    );
+  type PageRef = { pageId: number; contentId: number; annotId?: number; content: string };
+  const pageRefs: PageRef[] = opts.pages.map((page) => {
+    const content =
+      "BT /F1 14 Tf 72 720 Td\n" +
+      page.lines.map((line, i) => (i === 0 ? pdfTj(line) : `0 -20 Td ${pdfTj(line)}`)).join("\n") +
+      "\nET";
+    const pageId = nextId;
+    nextId += 1;
+    const contentId = nextId;
+    nextId += 1;
+    const annotId = page.annotation ? nextId++ : undefined;
+    return { pageId, contentId, annotId, content };
+  });
+
+  objects[catalogId] = `${catalogId} 0 obj\n<< /Type /Catalog /Pages ${pagesId} 0 R >>\nendobj\n`;
+  objects[pagesId] =
+    `${pagesId} 0 obj\n<< /Type /Pages /Kids [${pageRefs.map((p) => `${p.pageId} 0 R`).join(" ")}] /Count ${pageRefs.length} >>\nendobj\n`;
+  objects[fontId] = `${fontId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
+  objects[infoId] =
+    `${infoId} 0 obj\n<< /Title <${encodeUtf16BeHex(opts.title)}> /Author <${encodeUtf16BeHex("Hangul Guard")}> >>\nendobj\n`;
+
+  for (const page of pageRefs) {
+    const annots = page.annotId ? ` /Annots [${page.annotId} 0 R]` : "";
+    objects[page.pageId] =
+      `${page.pageId} 0 obj\n<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 612 792] /Contents ${page.contentId} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >>${annots} >>\nendobj\n`;
+    objects[page.contentId] =
+      `${page.contentId} 0 obj\n<< /Length ${encoder.encode(page.content).length} >>\nstream\n${page.content}\nendstream\nendobj\n`;
   }
+  opts.pages.forEach((page, i) => {
+    const annotId = pageRefs[i].annotId;
+    if (!annotId || !page.annotation) return;
+    objects[annotId] =
+      `${annotId} 0 obj\n<< /Type /Annot /Subtype /Text /Rect [72 640 120 680] /Contents <${encodeUtf16BeHex(page.annotation)}> /Name /Comment >>\nendobj\n`;
+  });
 
+  const ordered = objects.filter(Boolean);
   const chunks: Uint8Array[] = [encoder.encode(header)];
   const offsets: number[] = [0];
   let offset = encoder.encode(header).length;
-  for (const obj of objects) {
+  for (const obj of ordered) {
     offsets.push(offset);
     const bytes = encoder.encode(obj);
     chunks.push(bytes);
@@ -245,12 +279,12 @@ function buildPdfFile(name: string, opts: { lines: string[]; title: string; anno
   }
 
   const xrefStart = offset;
-  const count = objects.length + 1;
+  const count = ordered.length + 1;
   let xref = `xref\n0 ${count}\n0000000000 65535 f \n`;
   for (let i = 1; i < count; i += 1) {
     xref += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
   }
-  xref += `trailer\n<< /Size ${count} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+  xref += `trailer\n<< /Size ${count} /Root ${catalogId} 0 R /Info ${infoId} 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
   chunks.push(encoder.encode(xref));
 
   const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -313,14 +347,21 @@ export async function buildSampleFiles(): Promise<File[]> {
   );
 
   const dirtyPdf = buildPdfFile("Security_Policy.pdf", {
-    lines: ["Security Policy", "This page is English-only body text.", "Review before customer delivery."],
     title: "보안 정책 초안",
-    annotation: "내부용 한글 주석",
+    pages: [
+      {
+        lines: ["Security Policy", "본문 1페이지에 한글이 있습니다.", "Review before customer delivery."],
+        annotation: "1페이지 주석: 내부용",
+      },
+      {
+        lines: ["Appendix", "2페이지 부록에도 한글이 있습니다."],
+      },
+    ],
   });
 
   const cleanPdf = buildPdfFile("Release_Notes.pdf", {
-    lines: ["Release notes 1.4", "No outstanding localization issues."],
     title: "Release Notes",
+    pages: [{ lines: ["Release notes 1.4", "No outstanding localization issues."] }],
   });
 
   return [cleanDoc, dirtyDoc, dirtyXlsx, dirtyPpt, dirtyPdf, cleanPdf];

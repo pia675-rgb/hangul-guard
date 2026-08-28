@@ -2,6 +2,7 @@ import { findingsFromText } from "./xml";
 import type { Finding } from "./types";
 import { MAX_FINDINGS_PER_FILE } from "./types";
 import { bandFromY } from "./where";
+import { extractPdfPageTexts } from "./pdf-raw";
 
 type Pdfjs = typeof import("pdfjs-dist");
 
@@ -41,23 +42,6 @@ function stringField(obj: Record<string, unknown> | null, key: string): string {
   return typeof v === "string" ? v : "";
 }
 
-function extractHexUtf16Strings(buffer: ArrayBuffer): string[] {
-  const ascii = new TextDecoder("latin1").decode(buffer);
-  const out: string[] = [];
-  const re = /<FEFF([0-9A-Fa-f]+)>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(ascii)) !== null) {
-    const hex = match[1];
-    let text = "";
-    for (let i = 0; i + 3 < hex.length; i += 4) {
-      const cp = parseInt(hex.slice(i, i + 4), 16);
-      if (Number.isFinite(cp)) text += String.fromCharCode(cp);
-    }
-    if (text) out.push(text);
-  }
-  return out;
-}
-
 type TextRun = { str: string; x: number; y: number };
 
 function groupLines(runs: TextRun[]): Array<{ y: number; text: string }> {
@@ -82,8 +66,13 @@ function groupLines(runs: TextRun[]): Array<{ y: number; text: string }> {
   }));
 }
 
+function alreadyHas(findings: Finding[], text: string): boolean {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return findings.some((f) => f.snippet === collapsed || f.hangul === collapsed);
+}
+
 export async function scanPdfBuffer(buffer: ArrayBuffer): Promise<Finding[]> {
-  const encodedStrings = extractHexUtf16Strings(buffer);
+  const rawPages = await extractPdfPageTexts(buffer).catch(() => []);
   const pdfjs = await loadPdfjs();
   const task = pdfjs.getDocument({
     data: new Uint8Array(buffer.slice(0)),
@@ -110,12 +99,6 @@ export async function scanPdfBuffer(buffer: ArrayBuffer): Promise<Finding[]> {
       });
     }
 
-    for (const text of encodedStrings) {
-      const collapsed = text.replace(/\s+/g, " ").trim();
-      if (findings.some((f) => f.snippet === collapsed)) continue;
-      findingsFromText(text, "PDF encoded string", "metadata", findings, { headerName: "PDF encoded string" });
-    }
-
     const outline = await pdf.getOutline().catch(() => null);
     const walkOutline = (items: Array<{ title?: string; items?: unknown[] }> | null, depth: number) => {
       if (!items) return;
@@ -130,7 +113,8 @@ export async function scanPdfBuffer(buffer: ArrayBuffer): Promise<Finding[]> {
     };
     walkOutline(outline as Array<{ title?: string; items?: unknown[] }> | null, 0);
 
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const pageCount = pdf.numPages;
+    for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
       if (findings.length >= MAX_FINDINGS_PER_FILE) break;
       const page = await pdf.getPage(pageNum);
       const viewport = page.getViewport({ scale: 1 });
@@ -145,13 +129,16 @@ export async function scanPdfBuffer(buffer: ArrayBuffer): Promise<Finding[]> {
         runs.push({ str: rec.str, x, y });
       }
       const lines = groupLines(runs);
+      let lineHits = 0;
       lines.forEach((line, index) => {
         if (!line.text) return;
+        const before = findings.length;
         findingsFromText(line.text, `Page ${pageNum} · line ${index + 1}`, "body", findings, {
           page: pageNum,
           line: index + 1,
           band: bandFromY(line.y, viewport.height),
         });
+        if (findings.length > before) lineHits += 1;
       });
 
       const annots = await page.getAnnotations().catch(() => []);
@@ -163,16 +150,36 @@ export async function scanPdfBuffer(buffer: ArrayBuffer): Promise<Finding[]> {
         const subtype = stringField(rec, "subtype") || stringField(rec, "Subtype");
         findingsFromText(contents, `Page ${pageNum} · annotation`, "annotation", findings, {
           page: pageNum,
-          shape: subtype || "Annotation",
+          shape: subtype || "Comment",
         });
         findingsFromText(title, `Page ${pageNum} · annotation title`, "annotation", findings, {
           page: pageNum,
-          shape: "Annotation title",
+          shape: "Comment title",
         });
         findingsFromText(rich, `Page ${pageNum} · annotation`, "annotation", findings, {
           page: pageNum,
-          shape: "Annotation",
+          shape: "Comment",
         });
+      }
+
+      const raw = rawPages.find((p) => p.page === pageNum);
+      if (raw) {
+        raw.annots.forEach((text) => {
+          if (alreadyHas(findings, text)) return;
+          findingsFromText(text, `Page ${pageNum} · annotation`, "annotation", findings, {
+            page: pageNum,
+            shape: "Comment",
+          });
+        });
+        if (lineHits === 0) {
+          raw.body.forEach((text, index) => {
+            if (alreadyHas(findings, text)) return;
+            findingsFromText(text, `Page ${pageNum} · line ${index + 1}`, "body", findings, {
+              page: pageNum,
+              line: index + 1,
+            });
+          });
+        }
       }
     }
   } finally {
