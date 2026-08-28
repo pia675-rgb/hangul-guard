@@ -1,3 +1,5 @@
+import type { FindingWhere } from "./where";
+
 export type FileKind = "pdf" | "docx" | "xlsx" | "pptx" | "legacy" | "unknown";
 
 export type FindingKind =
@@ -20,6 +22,7 @@ export type Finding = {
   severity: Severity;
   kind: FindingKind;
   location: string;
+  where?: FindingWhere;
   hangul: string;
   snippet: string;
 };

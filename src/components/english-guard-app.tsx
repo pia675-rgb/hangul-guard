@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Languages,
   LoaderCircle,
+  MapPin,
   Presentation,
   Shield,
   Trash2,
@@ -22,6 +23,7 @@ import { highlightHangul } from "@/lib/hangul";
 import { copy, type Lang } from "@/lib/i18n";
 import { scanFile, type FileScanResult } from "@/lib/scan";
 import { englishSummary, toCsv, toJson } from "@/lib/scan/report";
+import { displayLocation, groupKey, groupTitle, summarizePlaces } from "@/lib/scan/where";
 import { buildSampleFiles } from "@/lib/scan/samples";
 import { cn, downloadBlob, downloadText, fetchLocalZipBlob, formatBytes } from "@/lib/utils";
 
@@ -314,7 +316,7 @@ export function EnglishGuardApp({ localMode = false }: { localMode?: boolean }) 
                 </li>
               )}
               {visible.map((file) => (
-                <FileCard key={file.id} file={file} t={t} onRemove={() => setResults((prev) => prev.filter((r) => r.id !== file.id))} />
+                <FileCard key={file.id} file={file} t={t} lang={lang} onRemove={() => setResults((prev) => prev.filter((r) => r.id !== file.id))} />
               ))}
             </ul>
           </section>
@@ -384,15 +386,44 @@ function Stat({
 function FileCard({
   file,
   t,
+  lang,
   onRemove,
 }: {
   file: FileScanResult;
   t: (typeof copy)[Lang];
+  lang: Lang;
   onRemove: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const shown = open ? file.findings : file.findings.slice(0, 3);
-  const extra = file.findings.length - shown.length;
+  const [open, setOpen] = useState(file.findings.length <= 8);
+  const places = summarizePlaces(
+    file.findings.map((f) => f.where),
+    lang,
+  );
+  const groups = (() => {
+    const map = new Map<string, FileScanResult["findings"]>();
+    for (const finding of file.findings) {
+      const key = groupKey(finding.where, finding.location);
+      const list = map.get(key) ?? [];
+      list.push(finding);
+      map.set(key, list);
+    }
+    return [...map.entries()].map(([key, items]) => ({
+      key,
+      title: groupTitle(key, lang),
+      items,
+    }));
+  })();
+  const limit = open ? file.findings.length : 8;
+  let remaining = limit;
+  const visibleGroups = groups
+    .map((group) => {
+      if (remaining <= 0) return { ...group, items: group.items.slice(0, 0) };
+      const items = group.items.slice(0, remaining);
+      remaining -= items.length;
+      return { ...group, items };
+    })
+    .filter((group) => group.items.length > 0);
+  const extra = Math.max(0, file.findings.length - 8);
 
   return (
     <li className="rounded-lg bg-card p-4 shadow-border sm:p-5">
@@ -416,6 +447,15 @@ function FileCard({
             {file.status === "flagged" ? ` · ${file.findings.length} ${t.findings} · ${file.hangulCount} ${t.chars}` : null}
             {file.status === "error" ? ` · ${file.error ?? t.scanFail}` : null}
           </p>
+          {places ? (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-foreground">
+              <MapPin className="mt-0.5 size-3.5 shrink-0 text-primary" strokeWidth={1.75} />
+              <span>
+                <span className="text-muted-foreground">{t.foundAt} · </span>
+                {places}
+              </span>
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -427,39 +467,47 @@ function FileCard({
         </button>
       </div>
       {file.findings.length > 0 && (
-        <ul className="mt-4 divide-y divide-border">
-          {shown.map((finding) => (
-            <li key={finding.id} className="py-3 first:pt-0 last:pb-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={finding.severity === "high" ? "flag" : finding.severity === "medium" ? "outline" : "default"}>
-                  {t.kind[finding.kind] ?? finding.kind}
-                </Badge>
-                <span className="text-xs text-muted-foreground">{finding.location}</span>
-              </div>
-              <p className="mt-1.5 font-mono text-sm leading-relaxed">
-                {highlightHangul(finding.snippet).map((part, i) =>
-                  part.hangul ? (
-                    <mark key={i} className="rounded-sm bg-mark px-0.5 text-mark-foreground">
-                      {part.text}
-                    </mark>
-                  ) : (
-                    <span key={i}>{part.text}</span>
-                  ),
-                )}
-              </p>
-            </li>
+        <div className="mt-4 flex flex-col gap-4">
+          {visibleGroups.map((group) => (
+            <div key={group.key}>
+              <p className="text-xs font-medium tracking-wide text-primary">{group.title}</p>
+              <ul className="mt-1 divide-y divide-border">
+                {group.items.map((finding) => (
+                  <li key={finding.id} className="py-3 first:pt-1 last:pb-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={finding.severity === "high" ? "flag" : finding.severity === "medium" ? "outline" : "default"}>
+                        {t.kind[finding.kind] ?? finding.kind}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {displayLocation(finding.where, finding.location, lang)}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 font-mono text-sm leading-relaxed">
+                      {highlightHangul(finding.snippet).map((part, i) =>
+                        part.hangul ? (
+                          <mark key={i} className="rounded-sm bg-mark px-0.5 text-mark-foreground">
+                            {part.text}
+                          </mark>
+                        ) : (
+                          <span key={i}>{part.text}</span>
+                        ),
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-      {file.findings.length > 3 && (
-        <button
-          type="button"
-          className="mt-2 text-xs font-medium text-primary"
-          onClick={() => setOpen((v) => !v)}
-        >
+      {file.findings.length > 8 && (
+        <button type="button" className="mt-2 text-xs font-medium text-primary" onClick={() => setOpen((v) => !v)}>
           {open ? t.less : `+${extra} ${t.more}`}
         </button>
       )}
+      {file.kind === "docx" && file.status === "flagged" ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t.wordPageNote}</p>
+      ) : null}
       {file.truncated && <p className="mt-2 text-xs text-muted-foreground">{t.truncated}</p>}
     </li>
   );

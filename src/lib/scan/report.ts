@@ -13,6 +13,16 @@ export function toCsv(results: FileScanResult[]): string {
     "Severity",
     "Category",
     "Location",
+    "Page",
+    "Slide",
+    "Sheet",
+    "Cell",
+    "Paragraph",
+    "Line",
+    "Table",
+    "Row",
+    "Column",
+    "Area",
     "Non-English",
     "Context",
     "Non-English characters",
@@ -20,14 +30,15 @@ export function toCsv(results: FileScanResult[]): string {
   const rows: string[][] = [header];
   for (const file of results) {
     if (file.status === "error") {
-      rows.push([file.fileName, "error", file.ext, "", "", "", "", file.error ?? "", "0"]);
+      rows.push([file.fileName, "error", file.ext, "", "", "", "", "", "", "", "", "", "", "", "", "", "", file.error ?? "", "0"]);
       continue;
     }
     if (file.findings.length === 0) {
-      rows.push([file.fileName, "clear", file.ext, "", "", "", "", "", "0"]);
+      rows.push([file.fileName, "clear", file.ext, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "0"]);
       continue;
     }
     for (const finding of file.findings) {
+      const w = finding.where ?? {};
       rows.push([
         file.fileName,
         "flagged",
@@ -35,6 +46,16 @@ export function toCsv(results: FileScanResult[]): string {
         finding.severity,
         finding.kind,
         finding.location,
+        w.page != null ? String(w.page) : "",
+        w.slide != null ? String(w.slide) : "",
+        w.sheet ?? "",
+        w.cell ?? "",
+        w.paragraph != null ? String(w.paragraph) : "",
+        w.line != null ? String(w.line) : "",
+        w.table != null ? String(w.table) : "",
+        w.row != null ? String(w.row) : "",
+        w.column != null ? String(w.column) : "",
+        w.band ?? w.shape ?? w.style ?? "",
         finding.hangul,
         finding.snippet,
         String(file.hangulCount),
@@ -59,6 +80,16 @@ export function toJson(results: FileScanResult[]): string {
           severity: f.severity,
           category: f.kind,
           location: f.location,
+          page: f.where?.page,
+          slide: f.where?.slide,
+          sheet: f.where?.sheet,
+          cell: f.where?.cell,
+          paragraph: f.where?.paragraph,
+          line: f.where?.line,
+          table: f.where?.table,
+          row: f.where?.row,
+          column: f.where?.column,
+          area: f.where?.band ?? f.where?.shape ?? f.where?.style,
           nonEnglish: f.hangul,
           context: f.snippet,
         })),
@@ -86,10 +117,10 @@ export function englishSummary(results: FileScanResult[]): string {
     lines.push(
       `${file.fileName} — ${file.findings.length} finding(s), ${file.hangulCount} non-English character(s)`,
     );
-    for (const f of file.findings.slice(0, 8)) {
+    for (const f of file.findings.slice(0, 12)) {
       lines.push(`  [${f.severity}] ${f.location}: ${f.hangul}`);
     }
-    if (file.findings.length > 8) lines.push(`  … ${file.findings.length - 8} more`);
+    if (file.findings.length > 12) lines.push(`  … ${file.findings.length - 12} more`);
   }
   for (const file of errors) {
     lines.push(`${file.fileName} — error: ${file.error}`);

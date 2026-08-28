@@ -81,15 +81,38 @@ async function scanDocx(zip: JSZip, findings: Finding[]) {
   const main = await readString(zip, "word/document.xml");
   if (main) {
     skip.add("word/document.xml");
-    const paraRe = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
-    let i = 0;
+    const tokenRe = /<w:tbl\b[\s\S]*?<\/w:tbl>|<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+    let para = 0;
+    let table = 0;
     let match: RegExpExecArray | null;
-    while ((match = paraRe.exec(main)) !== null) {
-      i += 1;
-      const texts = extractTaggedText(match[1], "t");
-      const paragraph = texts.join("");
-      findingsFromText(paragraph, `Body · paragraph ${i}`, "body", findings);
+    while ((match = tokenRe.exec(main)) !== null) {
       if (cap(findings)) break;
+      const chunk = match[0];
+      if (chunk.startsWith("<w:tbl")) {
+        table += 1;
+        const rows = chunk.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) ?? [];
+        rows.forEach((rowXml, rowIndex) => {
+          const cells = rowXml.match(/<w:tc\b[\s\S]*?<\/w:tc>/g) ?? [];
+          cells.forEach((cellXml, colIndex) => {
+            const text = extractTaggedText(cellXml, "t").join("");
+            findingsFromText(text, `Table ${table} · R${rowIndex + 1}C${colIndex + 1}`, "body", findings, {
+              table,
+              row: rowIndex + 1,
+              column: colIndex + 1,
+            });
+          });
+        });
+        continue;
+      }
+      const text = extractTaggedText(chunk, "t").join("");
+      if (!text.trim()) continue;
+      para += 1;
+      const styleRaw = /<w:pStyle[^>]*w:val="([^"]+)"/i.exec(chunk)?.[1] ?? "";
+      const style = headingLabel(styleRaw);
+      findingsFromText(text, `Body · paragraph ${para}`, "body", findings, {
+        paragraph: para,
+        style,
+      });
     }
   }
 
@@ -103,25 +126,41 @@ async function scanDocx(zip: JSZip, findings: Finding[]) {
     if (!xml) continue;
     skip.add(path);
     const texts = extractTaggedText(xml, "t");
-    findingsFromText(texts.join("\n"), label, kind, findings);
+    texts.forEach((text, i) => {
+      findingsFromText(text, `${label} · ${i + 1}`, kind, findings, {
+        headerName: label,
+        line: i + 1,
+      });
+    });
   }
 
   for (const file of Object.values(zip.files)) {
     const path = normalizePath(file.name);
-    if (/^word\/header\d*\.xml$/i.test(path)) {
-      skip.add(path);
-      const xml = await file.async("string");
-      findingsFromText(extractTaggedText(xml, "t").join(""), "Header", "header", findings);
-    }
-    if (/^word\/footer\d*\.xml$/i.test(path)) {
-      skip.add(path);
-      const xml = await file.async("string");
-      findingsFromText(extractTaggedText(xml, "t").join(""), "Footer", "footer", findings);
-    }
+    const header = /^word\/(header)(\d*)\.xml$/i.exec(path);
+    const footer = /^word\/(footer)(\d*)\.xml$/i.exec(path);
+    const hf = header ?? footer;
+    if (!hf) continue;
+    skip.add(path);
+    const xml = await file.async("string");
+    const kind = header ? "header" : "footer";
+    const n = hf[2] || "1";
+    const label = header ? `Header ${n}` : `Footer ${n}`;
+    findingsFromText(extractTaggedText(xml, "t").join(""), label, kind, findings, { headerName: label });
   }
 
   await scanCoreProps(zip, findings, skip);
   await scanGenericXml(zip, findings, skip);
+}
+
+function headingLabel(style: string): string | undefined {
+  if (!style) return undefined;
+  const compact = style.replace(/\s+/g, "");
+  if (/^Heading1$|^제목1$/i.test(compact)) return "Heading 1";
+  if (/^Heading2$|^제목2$/i.test(compact)) return "Heading 2";
+  if (/^Heading3$|^제목3$/i.test(compact)) return "Heading 3";
+  if (/^Title$|^제목$/i.test(compact)) return "Title";
+  if (/^Subtitle$|^부제/i.test(compact)) return "Subtitle";
+  return undefined;
 }
 
 async function scanCoreProps(zip: JSZip, findings: Finding[], skip: Set<string>) {
@@ -174,7 +213,7 @@ async function scanXlsx(zip: JSZip, findings: Finding[]) {
       const name = decodeXmlEntities(/name="([^"]*)"/i.exec(tag)?.[1] ?? "");
       const rId = /r:id="([^"]*)"/i.exec(tag)?.[1] ?? /id="([^"]*)"/i.exec(tag)?.[1] ?? "";
       const path = relMap.get(rId) ?? "";
-      if (name) findingsFromText(name, "Sheet name", "name", findings);
+      if (name) findingsFromText(name, "Sheet name", "name", findings, { sheet: name });
       if (path) sheets.push({ name: name || path, path });
     }
     const defined = extractTaggedText(wb, "definedName");
@@ -201,7 +240,10 @@ async function scanXlsx(zip: JSZip, findings: Finding[]) {
     const headerTags = ["oddHeader", "evenHeader", "firstHeader", "oddFooter", "evenFooter", "firstFooter"];
     for (const tag of headerTags) {
       const kind = tag.toLowerCase().includes("footer") ? "footer" : "header";
-      findingsFromText(extractTaggedText(xml, tag).join(""), `${sheet.name} · ${tag}`, kind, findings);
+      findingsFromText(extractTaggedText(xml, tag).join(""), `${sheet.name} · ${tag}`, kind, findings, {
+        sheet: sheet.name,
+        headerName: tag.toLowerCase().includes("footer") ? "Footer" : "Header",
+      });
     }
     const cellRe = /<c\b([^>]*)>([\s\S]*?)<\/c>/gi;
     let cell: RegExpExecArray | null;
@@ -222,8 +264,12 @@ async function scanXlsx(zip: JSZip, findings: Finding[]) {
       }
       const formula = decodeXmlEntities(/<f\b[^>]*>([\s\S]*?)<\/f>/i.exec(body)?.[1] ?? "");
       const loc = ref ? `${sheet.name}!${ref}` : sheet.name;
-      findingsFromText(value, loc, "body", findings);
-      findingsFromText(formula, `${loc} · formula`, "body", findings);
+      findingsFromText(value, loc, "body", findings, { sheet: sheet.name, cell: ref || undefined });
+      findingsFromText(formula, `${loc} · formula`, "body", findings, {
+        sheet: sheet.name,
+        cell: ref || undefined,
+        shape: "Formula",
+      });
     }
   }
 
@@ -232,8 +278,16 @@ async function scanXlsx(zip: JSZip, findings: Finding[]) {
     if (/^xl\/comments\d*\.xml$/i.test(path)) {
       skip.add(path);
       const xml = await file.async("string");
-      const comments = extractTaggedText(xml, "t");
-      findingsFromText(comments.join("\n"), "Comments", "comment", findings);
+      const commentRe = /<comment\b([^>]*)>([\s\S]*?)<\/comment>/gi;
+      let comment: RegExpExecArray | null;
+      while ((comment = commentRe.exec(xml)) !== null) {
+        const ref = /ref="([^"]+)"/i.exec(comment[1])?.[1] ?? "";
+        const text = extractTaggedText(comment[2], "t").join("");
+        findingsFromText(text, ref ? `Comment ${ref}` : "Comments", "comment", findings, {
+          cell: ref || undefined,
+          headerName: "Comment",
+        });
+      }
     }
   }
 
@@ -253,15 +307,32 @@ async function scanPptx(zip: JSZip, findings: Finding[]) {
     if (slide) {
       skip.add(path);
       const xml = await file.async("string");
-      const n = slide[1];
-      const texts = extractTaggedText(xml, "t");
-      texts.forEach((t, i) => findingsFromText(t, `Slide ${n} · text ${i + 1}`, "body", findings));
-      for (const name of extractAttr(xml, "name")) {
-        findingsFromText(name, `Slide ${n} · shape name`, "name", findings);
-      }
-      for (const descr of extractAttr(xml, "descr")) {
-        findingsFromText(descr, `Slide ${n} · alt text`, "name", findings);
-      }
+      const n = Number(slide[1]);
+      const shapes = xml.match(/<p:sp\b[\s\S]*?<\/p:sp>/gi) ?? [xml];
+      shapes.forEach((shapeXml, index) => {
+        const ph = /<p:ph\b[^>]*>/i.exec(shapeXml)?.[0] ?? "";
+        const phType = /type="([^"]+)"/i.exec(ph)?.[1] ?? "";
+        const name = extractAttr(shapeXml, "name")[0] ?? "";
+        const role = pptRole(phType, name, index);
+        const texts = extractTaggedText(shapeXml, "t");
+        const joined = texts.join("");
+        findingsFromText(joined, `Slide ${n} · ${role}`, "body", findings, {
+          slide: n,
+          shape: role,
+        });
+        if (name && name !== role) {
+          findingsFromText(name, `Slide ${n} · shape name`, "name", findings, {
+            slide: n,
+            shape: name,
+          });
+        }
+        for (const descr of extractAttr(shapeXml, "descr")) {
+          findingsFromText(descr, `Slide ${n} · alt text`, "name", findings, {
+            slide: n,
+            shape: "Alt text",
+          });
+        }
+      });
       continue;
     }
 
@@ -269,7 +340,10 @@ async function scanPptx(zip: JSZip, findings: Finding[]) {
     if (notes) {
       skip.add(path);
       const xml = await file.async("string");
-      findingsFromText(extractTaggedText(xml, "t").join("\n"), `Slide ${notes[1]} notes`, "notes", findings);
+      findingsFromText(extractTaggedText(xml, "t").join("\n"), `Slide ${notes[1]} notes`, "notes", findings, {
+        slide: Number(notes[1]),
+        headerName: "Speaker notes",
+      });
       continue;
     }
 
@@ -277,9 +351,9 @@ async function scanPptx(zip: JSZip, findings: Finding[]) {
       skip.add(path);
       const xml = await file.async("string");
       const loc = path.includes("slideMasters") ? "Slide master" : "Slide layout";
-      findingsFromText(extractTaggedText(xml, "t").join("\n"), loc, "master", findings);
+      findingsFromText(extractTaggedText(xml, "t").join("\n"), loc, "master", findings, { headerName: loc });
       for (const name of extractAttr(xml, "name")) {
-        findingsFromText(name, `${loc} · shape name`, "name", findings);
+        findingsFromText(name, `${loc} · shape name`, "name", findings, { headerName: loc, shape: name });
       }
     }
   }
@@ -329,4 +403,26 @@ export async function scanOfficeBuffer(
   else if (kind === "pptx") await scanPptx(zip, findings);
   await scanEmbeddings(zip, findings, scanNested);
   return findings;
+}
+
+function pptRole(phType: string, _name: string, index: number): string {
+  switch (phType) {
+    case "title":
+    case "ctrTitle":
+      return "Title";
+    case "subTitle":
+      return "Subtitle";
+    case "body":
+      return "Body";
+    case "dt":
+      return "Date";
+    case "ftr":
+      return "Footer";
+    case "hdr":
+      return "Header";
+    case "sldNum":
+      return "Slide number";
+    default:
+      return `Text box ${index + 1}`;
+  }
 }

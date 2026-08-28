@@ -5,6 +5,7 @@ import {
   type Finding,
   type FindingKind,
 } from "./types";
+import { englishLocation, type FindingWhere } from "./where";
 
 const AMP = "\u0026";
 
@@ -63,6 +64,7 @@ export function findingsFromText(
   location: string,
   kind: FindingKind,
   bucket: Finding[],
+  where?: FindingWhere,
 ): void {
   if (!text || bucket.length >= MAX_FINDINGS_PER_FILE) return;
   if (!hasHangul(text)) return;
@@ -74,7 +76,8 @@ export function findingsFromText(
     id: `f-${findingSeq}`,
     severity: severityForKind(kind),
     kind,
-    location,
+    location: where ? englishLocation(where, location) : location,
+    where,
     hangul: hits.map((h) => h.hangul).join(" "),
     snippet: collapsed.length <= 180 ? collapsed : hits[0].snippet,
   });
