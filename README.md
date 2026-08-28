@@ -23,7 +23,7 @@ npm install
 npm run build:local
 ```
 
-That writes `EnglishGuard-Local.zip`. Unzip on a Windows PC and double-click `EnglishGuard.bat`. No install, no internet. The server binds to this PC only.
+That writes `EnglishGuard-Local.zip` (a single `EnglishGuard.html` plus a Korean readme). Unzip and open the HTML in Chrome or Edge. No install, no internet, no `.bat` / `.exe`.
 
 See `local-app/사용설명.txt`.
 

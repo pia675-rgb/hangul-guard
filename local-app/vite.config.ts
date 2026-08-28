@@ -18,6 +18,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(dir, "../local-dist"),
     emptyOutDir: true,
-    assetsInlineLimit: 0,
+    cssCodeSplit: false,
+    assetsInlineLimit: 10_000_000,
+    lib: {
+      entry: path.resolve(dir, "main.tsx"),
+      name: "EnglishGuardLocal",
+      formats: ["iife"],
+      fileName: () => "app.js",
+    },
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: true,
+        assetFileNames: "app.css",
+      },
+    },
   },
 });

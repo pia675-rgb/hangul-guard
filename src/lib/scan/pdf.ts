@@ -10,8 +10,11 @@ async function loadPdfjs(): Promise<Pdfjs> {
   if (!pdfjsLoader) {
     pdfjsLoader = (async () => {
       const pdfjs = await import("pdfjs-dist");
-      const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
-      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+      const isFile = typeof location !== "undefined" && location.protocol === "file:";
+      if (!isFile) {
+        const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+        pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+      }
       return pdfjs;
     })();
   }
