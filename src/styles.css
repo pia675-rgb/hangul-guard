@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-background: #f3f1ea;
+  --color-foreground: #1c1b16;
+  --color-card: #fbfaf6;
+  --color-card-foreground: #1c1b16;
+  --color-primary: #1c3d5a;
+  --color-primary-foreground: #f6f3ea;
+  --color-secondary: #e7e3d8;
+  --color-secondary-foreground: #1c1b16;
+  --color-muted: #ece8dd;
+  --color-muted-foreground: #6b675c;
+  --color-border: color-mix(in oklab, #1c1b16 12%, transparent);
+  --color-ring: #1c3d5a;
+  --color-destructive: #9f2d22;
+  --color-destructive-foreground: #fdf7f5;
+  --color-ok: #1f6b45;
+  --color-ok-soft: #e4f0e8;
+  --color-mark: #f3ddd7;
+  --color-mark-foreground: #7a241c;
+  --color-paper-rule: color-mix(in oklab, #1c1b16 8%, transparent);
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --shadow-border: 0 0 0 1px color-mix(in oklab, #1c1b16 8%, transparent),
+    0 1px 2px -1px color-mix(in oklab, #1c1b16 6%, transparent),
+    0 2px 8px -2px color-mix(in oklab, #1c1b16 5%, transparent);
+  --shadow-border-hover: 0 0 0 1px color-mix(in oklab, #1c1b16 14%, transparent),
+    0 2px 8px -2px color-mix(in oklab, #1c1b16 8%, transparent);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-micro: 80ms;
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+  --motion-slow: 400ms;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: var(--color-mark);
+    color: var(--color-mark-foreground);
+  }
+}
+
+.paper-grid {
+  background-image:
+    linear-gradient(to right, var(--color-paper-rule) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-paper-rule) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  padding: 2px 7px 1px;
+  font-family: var(--font-sans);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  transform: rotate(-11deg);
+  user-select: none;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.rise-in {
+  animation: rise-in var(--motion-slow) var(--ease-smooth-out) both;
+}
+
+.rise-in-1 { animation-delay: 40ms; }
+.rise-in-2 { animation-delay: 80ms; }
+.rise-in-3 { animation-delay: 120ms; }
+.rise-in-4 { animation-delay: 160ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .stamp {
+    animation: none;
+    transform: none;
+    filter: none;
+  }
+}
