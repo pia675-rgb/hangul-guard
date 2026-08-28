@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source "./**/*.{ts,tsx}";
+@source "../local-app/**/*.{ts,tsx,html}";
 
 @theme {
   --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, "Malgun Gothic", "Apple SD Gothic Neo", serif;

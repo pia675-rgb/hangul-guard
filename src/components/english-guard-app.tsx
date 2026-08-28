@@ -251,7 +251,8 @@ export function EnglishGuardApp({ localMode = false }: { localMode?: boolean }) 
                 ref={inputRef}
                 type="file"
                 multiple
-                className="hidden"
+                hidden
+                className="sr-only"
                 accept=".pdf,.docx,.docm,.dotx,.dotm,.xlsx,.xlsm,.xltx,.xltm,.pptx,.pptm,.potx,.potm,.doc,.xls,.ppt"
                 onChange={(e) => {
                   const list = e.target.files;
