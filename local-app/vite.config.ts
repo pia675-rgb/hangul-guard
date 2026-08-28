@@ -9,7 +9,11 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   root: dir,
   base: "./",
+  mode: "production",
   plugins: [tailwindcss(), viteReact()],
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
   resolve: {
     alias: {
       "@": path.resolve(dir, "../src"),
@@ -20,6 +24,7 @@ export default defineConfig({
     emptyOutDir: true,
     cssCodeSplit: false,
     assetsInlineLimit: 10_000_000,
+    minify: true,
     lib: {
       entry: path.resolve(dir, "main.tsx"),
       name: "EnglishGuardLocal",

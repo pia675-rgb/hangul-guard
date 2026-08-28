@@ -142,6 +142,22 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+function zipAttachmentPlugin(): Plugin {
+  return {
+    name: "english-guard-zip-attachment",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathOnly = (req.url ?? "").split("?", 1)[0];
+        if (pathOnly === "/EnglishGuard-Local.zip") {
+          res.setHeader("Content-Disposition", 'attachment; filename="EnglishGuard-Local.zip"');
+          res.setHeader("Content-Type", "application/zip");
+        }
+        next();
+      });
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -165,6 +181,7 @@ export default defineConfig(({ command, isPreview }) => ({
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
+    zipAttachmentPlugin(),
     tailwindcss(),
     tanstackStart(),
     ...(command === "build" || isPreview

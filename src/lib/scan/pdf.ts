@@ -5,15 +5,24 @@ import { MAX_FINDINGS_PER_FILE } from "./types";
 type Pdfjs = typeof import("pdfjs-dist");
 
 let pdfjsLoader: Promise<Pdfjs> | null = null;
+let workerBlobUrl: string | null = null;
 
 async function loadPdfjs(): Promise<Pdfjs> {
   if (!pdfjsLoader) {
     pdfjsLoader = (async () => {
       const pdfjs = await import("pdfjs-dist");
-      const isFile = typeof location !== "undefined" && location.protocol === "file:";
-      if (!isFile) {
-        const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
-        pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+      try {
+        const workerMod = await import("pdfjs-dist/build/pdf.worker.min.mjs?raw");
+        const source = typeof workerMod.default === "string" ? workerMod.default : String(workerMod);
+        if (workerBlobUrl) URL.revokeObjectURL(workerBlobUrl);
+        workerBlobUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+        pdfjs.GlobalWorkerOptions.workerSrc = workerBlobUrl;
+      } catch {
+        const isFile = typeof location !== "undefined" && location.protocol === "file:";
+        if (!isFile) {
+          const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+          pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+        }
       }
       return pdfjs;
     })();

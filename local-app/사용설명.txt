@@ -1,14 +1,19 @@
 English Guard — 사내망 로컬 앱
 ================================
 
-바이러스가 아닙니다. 설치 파일(.exe / .bat)이 없습니다.
+바이러스가 아닙니다. 설치 파일(.exe)이 없습니다.
 
 사용
   1. 압축을 풉니다.
-  2. EnglishGuard.html 을 Chrome 또는 Edge로 엽니다. (더블클릭)
+  2. EnglishGuard.html 을 Chrome 또는 Edge로 엽니다.
+     (더블클릭, 또는 EnglishGuard-open.bat)
   3. PDF / Word / Excel / PPT 를 창에 놓습니다.
   4. 끝나면 탭을 닫습니다.
 
 인터넷이 필요 없습니다. 파일은 이 PC 밖으로 나가지 않습니다.
+
+빈 화면이면
+  · Internet Explorer 로 연 경우입니다. Chrome / Edge 로 여세요.
+  · 파일을 우클릭 → 연결 프로그램 → Chrome.
 
 이미지로만 된 스캔 PDF는 글자를 읽지 못합니다.

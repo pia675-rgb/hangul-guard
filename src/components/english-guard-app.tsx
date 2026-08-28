@@ -23,7 +23,7 @@ import { copy, type Lang } from "@/lib/i18n";
 import { scanFile, type FileScanResult } from "@/lib/scan";
 import { englishSummary, toCsv, toJson } from "@/lib/scan/report";
 import { buildSampleFiles } from "@/lib/scan/samples";
-import { cn, downloadText, formatBytes } from "@/lib/utils";
+import { cn, downloadBlob, downloadText, fetchLocalZipBlob, formatBytes } from "@/lib/utils";
 
 type Filter = "all" | "flagged" | "clear" | "error";
 
@@ -37,6 +37,7 @@ export function EnglishGuardApp({ localMode = false }: { localMode?: boolean }) 
   );
   const [copied, setCopied] = useState(false);
   const [pickerReady, setPickerReady] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const t = copy[lang];
 
@@ -108,6 +109,20 @@ export function EnglishGuardApp({ localMode = false }: { localMode?: boolean }) 
     window.setTimeout(() => setCopied(false), 1600);
   };
 
+  const downloadLocalZip = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const blob = await fetchLocalZipBlob();
+      downloadBlob("EnglishGuard-Local.zip", blob);
+      toast(t.downloadStarted);
+    } catch {
+      toast.error(t.downloadFail);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <main className="relative min-h-dvh overflow-x-hidden">
       <div className="paper-grid pointer-events-none absolute inset-0 opacity-70" />
@@ -129,6 +144,21 @@ export function EnglishGuardApp({ localMode = false }: { localMode?: boolean }) 
             <p className="mt-3 max-w-prose text-sm text-muted-foreground">
               {localMode ? t.localPrivacy : t.privacy}
             </p>
+            {!localMode ? (
+              <div className="mt-4 flex flex-col items-start gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void downloadLocalZip()}
+                  disabled={downloading}
+                >
+                  {downloading ? <LoaderCircle className="animate-spin" /> : <Download />}
+                  {downloading ? t.downloading : t.downloadLocal}
+                </Button>
+                <p className="text-xs text-muted-foreground">{t.downloadLocalHint}</p>
+              </div>
+            ) : null}
           </div>
           <div className="rise-in rise-in-1 flex items-center gap-1 self-start rounded-full bg-card p-1 shadow-border">
             <Languages className="ml-2 size-3.5 text-muted-foreground" />
